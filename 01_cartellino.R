@@ -3,6 +3,7 @@ library(tidyverse)
 library(dplyr)
 library(tidyr)
 library(stringr)
+
 doc <- read_docx("arf/01.A345.AQ.13.docx")
 tbls <- docx_extract_all_tbls(doc, guess_header = TRUE)
 

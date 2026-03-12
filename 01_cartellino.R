@@ -42,7 +42,11 @@ albero <- tbls_z |>
       filter(val != "") |>
       pivot_wider(names_from = key, values_from = val)
   }) |> 
-  (\(.) do.call(bind_rows, .))() 
+  (\(.) do.call(bind_rows, .))() |> 
+  mutate(altezza_cm = case_when(
+    is.na(altezza_cm) ~ altezza_m,
+    TRUE ~ altezza_cm
+  ))
 
 cartellino_df <- albero |>
         mutate(
@@ -84,9 +88,6 @@ cartellino_df <- albero |>
         select(nome, localizzazione, caratteristiche, note, everything()) |>
         select(-.row)
 
-cartellino_df |> 
-  filter(is.na(lat_dec) | is.na(lon_dec)) |> 
-  pull(n_scheda)
 
 # Assumo già lat_dec/lon_dec nel cartellino_df
 cartellino_df2 <- cartellino_df %>%

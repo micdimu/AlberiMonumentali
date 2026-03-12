@@ -1,57 +1,48 @@
-library(docxtractr)
 library(tidyverse)
-library(dplyr)
-library(tidyr)
-library(stringr)
+library(docxtractr)
+library(patchwork)
+library(maptiles)
+library(terra)
+library(tidyterra)
+library(sf)
+source("source.R")
+
+tbls <- list.files("input", pattern = ".docx$", full.names = TRUE, recursive = TRUE)|> 
+  map(read_docx) |> 
+  map(docx_extract_all_tbls, guess_header = TRUE) 
 
 
-doc <- read_docx("arf/01.A345.AQ.13.docx")
-tbls <- docx_extract_all_tbls(doc, guess_header = TRUE)
+### carica i confini
+if(!file.exists("boundaries/abruzzo_boundaries.rds")){
+  errorCondition("see code in getmap.R to download boundaries from ISTAT and save as RDS")
+}
+bnd <- readRDS("boundaries/abruzzo_boundaries.rds")
+abruzzo <- bnd$abruzzo
+comuni_ab <- bnd$comuni_abruzzo
+
+
 
 # prima tabella:
-tbls_z <- tbls[[1]] |> 
-        select(n1 = 1, n2 = 2)  
-
-
-
-# tb = il tuo tibble 20x2
-# nomi colonne come nel print: n..progr..Per.provincia e X1
-
-clean_key <- function(x) {
-        x |>
-                stringr::str_to_lower() |>
-                stringr::str_replace_all("[’`´]", "'") |>
-                stringr::str_replace_all("[^[:alnum:]àèéìòù ]+", " ") |>
-                stringr::str_squish() |>
-                stringr::str_replace_all(" ", "_")
-}
-
-# DMS "N 42°12'04\"" -> decimal degrees
-dms_to_dec <- function(x) {
-        if (is.na(x) || !nzchar(x)) return(NA_real_)
-        x <- str_squish(x)
-        hemi <- str_extract(x, "^[NSEW]")
-        nums <- str_match(x, "([0-9]+)°\\s*([0-9]+)'\\s*([0-9]+)")
-        if (any(is.na(nums))) return(NA_real_)
-        deg <- as.numeric(nums[,2]); min <- as.numeric(nums[,3]); sec <- as.numeric(nums[,4])
-        dec <- deg + min/60 + sec/3600
-        if (hemi %in% c("S","W")) dec <- -dec
-        dec
-}
+tbls_z <- tbls |>
+  map(\(x){
+    if (length(x) >= 1) 
+    select(x[[1]], n1 = 1, n2 = 2)
+   }) |> 
+  compact()
 
 albero <- tbls_z |>
+  map(\(x){
+    x |> 
         transmute(
                 key = clean_key(n1),
                 val = str_squish(n2)
         ) |>
-        # se ci sono chiavi duplicate, tieni la prima non-NA (o concatena se preferisci)
-        group_by(key) |>
-        summarise(val = val[which.max(nzchar(val))][1], .groups = "drop") |>
-        pivot_wider(names_from = key, values_from = val)
-
-# helper per recuperare in modo safe (se una colonna non esiste)
-get1 <- function(df, nm) if (nm %in% names(df)) df[[nm]] else NA_character_
-
+      group_by(key) |>
+      summarise(val = val[which.max(nzchar(val))][1], .groups = "drop") |>
+      filter(val != "") |>
+      pivot_wider(names_from = key, values_from = val)
+  }) |> 
+  (\(.) do.call(bind_rows, .))() 
 
 cartellino_df <- albero |>
         mutate(
@@ -93,5 +84,64 @@ cartellino_df <- albero |>
         select(nome, localizzazione, caratteristiche, note, everything()) |>
         select(-.row)
 
-saveRDS(cartellino_df, "cartellino_df.rds")
+cartellino_df |> 
+  filter(is.na(lat_dec) | is.na(lon_dec)) |> 
+  pull(n_scheda)
+
+# Assumo già lat_dec/lon_dec nel cartellino_df
+cartellino_df2 <- cartellino_df %>%
+  mutate(
+    comune_poly = Map(
+      \(c, p) find_comune(c, p),
+      if ("comune" %in% names(.)) comune else NA_character_,
+      if ("provincia" %in% names(.)) provincia else NA_character_
+    ),
+    map_plot = Map(make_map_abruzzo, lon_dec, lat_dec, comune_poly)
+  )
+
+cartellino_df2 |> 
+  filter(is.null(map_plot)) |> 
+  pull(n_scheda)
+
+for(i in seq_len(nrow(cartellino_df2))){
+  
+  p <- cartellino_df2$map_plot[[i]]
+  
+  if(!is.null(p)){
+    
+    file <- sprintf("maps/map_%03d.png", i)
+    
+    ggsave(
+      file,
+      plot = p,
+      width = 18,
+      height = 9,
+      units = "cm",
+      dpi = 300
+    )
+    
+    cartellino_df2$map_file[i] <- file
+    
+  } else {
+    
+    cartellino_df2$map_file[i] <- NA
+    
+  }
+  
+}
+
+cartellino_df3 <- cartellino_df2 |> 
+  select(-map_plot) |> 
+  filter(!is.na(map_file))
+
+cartellino_df2 |> 
+  filter(is.na(map_file)) |> 
+  pull(n_scheda)
+
+
+saveRDS(cartellino_df3, "output/cartellino_df_maps.rds")
+
+
+
+
 

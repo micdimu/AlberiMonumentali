@@ -1,0 +1,155 @@
+---
+format:
+  pdf:
+    pdf-engine: xelatex
+    geometry: margin=18mm
+header-includes:
+  - \usepackage{graphicx}
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(knitr)
+
+cartellino_df <- readRDS("output/cartellino_df_maps.rds")
+
+# helper anti-NA
+fmt <- function(x) {
+  x <- as.character(x)
+  x[is.na(x) | !nzchar(trimws(x))] <- "—"
+  x
+}
+
+# se non hai lat_dec/lon_dec, prova a crearli da latitudine/longitudine (se presenti)
+dms_to_dec <- function(x) {
+  if (is.na(x) || !nzchar(x)) return(NA_real_)
+  x <- gsub("\\s+", " ", trimws(x))
+  hemi <- sub("^([NSEW]).*$", "\\1", x)
+  m <- regexec("([0-9]+)°\\s*([0-9]+)'\\s*([0-9]+)", x)
+  z <- regmatches(x, m)[[1]]
+  if (length(z) != 4) return(NA_real_)
+  deg <- as.numeric(z[2]); min <- as.numeric(z[3]); sec <- as.numeric(z[4])
+  dec <- deg + min/60 + sec/3600
+  if (hemi %in% c("S","W")) dec <- -dec
+  dec
+}
+
+if (!all(c("lat_dec","lon_dec") %in% names(cartellino_df))) {
+  if (all(c("latitudine","longitudine") %in% names(cartellino_df))) {
+    cartellino_df <- cartellino_df |>
+      mutate(
+        lat_dec = vapply(latitudine,  dms_to_dec, numeric(1)),
+        lon_dec = vapply(longitudine, dms_to_dec, numeric(1))
+      )
+  } else {
+    cartellino_df$lat_dec <- NA_real_
+    cartellino_df$lon_dec <- NA_real_
+  }
+}
+```
+
+```{r}
+#| results: asis
+
+for (i in seq_len(nrow(cartellino_df))) {
+  r <- cartellino_df[i, ]
+
+  # ---- titolo gigante centrato (LaTeX vero, non stampato come testo) ----
+  cat("\\begin{center}\n")
+  cat("\\LARGE\\textbf{", fmt(r$nome), "}\n", sep = "")
+  cat("\\end{center}\n\n")
+  cat("\\vspace{2mm}\n\n")
+
+  # ---- TABELLA LOCALIZZAZIONE ----
+  loc_tbl <- data.frame(
+    Campo = c("Regione", "Provincia", 
+              "Comune", "Località", 
+              "Quota (m)", "Lat", "Lon", 
+              "Lat (dec)", "Lon (dec)"),
+    Valore = c(
+      fmt(if ("regione" %in% names(r)) r$regione else NA),
+      fmt(if ("provincia" %in% names(r)) r$provincia else NA),
+      fmt(if ("comune" %in% names(r)) r$comune else NA),
+      fmt(if ("localita" %in% names(r)) r$localita else NA),
+      fmt(if ("altitudine_m_s_l_m" %in% names(r)) r$altitudine_m_s_l_m else NA),
+      fmt(if ("latitudine" %in% names(r)) r$latitudine else NA),
+      fmt(if ("longitudine" %in% names(r)) r$longitudine else NA),
+      fmt(if (!is.na(r$lat_dec)) sprintf("%.6f", r$lat_dec) else NA),
+      fmt(if (!is.na(r$lon_dec)) sprintf("%.6f", r$lon_dec) else NA)
+    ),
+    stringsAsFactors = FALSE
+  )
+  loc_tbl[,1] <- paste0("\\textbf{", loc_tbl[,1], "}")
+  
+  cat("\\begin{minipage}{0.35\\textwidth}\n")
+  cat("\\textbf{Localizzazione}\n\n\\vspace{0.3cm}\n\n")
+  
+  print(knitr::kable(loc_tbl,
+                   format = "latex",
+                   booktabs = TRUE,
+                   col.names = NULL,
+                   escape = FALSE))
+  
+  cat("\\end{minipage}\n")
+  
+  cat("\\hfill\n")
+  
+  cat("\\begin{minipage}{0.60\\textwidth}\n")
+  cat("\n\n")
+  
+  mf <- r$map_file
+  
+  if (!is.na(mf) && file.exists(mf)) {
+          # Markdown image -> Pandoc la inserisce nel PDF
+          cat("\\includegraphics[width=\\linewidth]{", mf, "}\n\n", sep = "")
+          } else {
+                  cat("_Mappa non disponibile._\n\n")
+                  }
+  
+  cat("\\end{minipage}\n\n")
+                  
+
+  # ---- TABELLA CARATTERISTICHE ----
+  car_tbl <- data.frame(
+    Campo = c("Specie", "Nome volgare", "Circonferenza (cm)", "Altezza (m)", "Criterio monumentalità"),
+    Valore = c(
+      fmt(if ("specie" %in% names(r)) r$specie else NA),
+      fmt(if ("nome_volgare" %in% names(r)) r$nome_volgare else NA),
+      fmt(if ("circonferenza_cm" %in% names(r)) r$circonferenza_cm else NA),
+      fmt(if ("altezza_cm" %in% names(r)) r$altezza_cm else NA),
+      fmt(if ("criterio_monumentalita" %in% names(r)) r$criterio_monumentalita else NA)
+    ),
+    stringsAsFactors = FALSE
+  )
+  
+  crit <- strsplit(car_tbl$Valore[car_tbl$Campo == "Criterio monumentalità"], ",\\s*")[[1]]
+
+new_rows <- data.frame(
+  Campo = c("Criterio di monumentalità", rep("", length(crit)-1)),
+  Valore = crit
+)
+
+car_tbl <- rbind(
+  car_tbl[car_tbl$Campo != "Criterio monumentalità", ],
+  new_rows,
+  stringsAsFactors = FALSE
+)
+  
+  car_tbl[,1] <- paste0("\\textbf{", car_tbl[,1], "}")
+  cat("**Caratteristiche**\n\n")
+  print(knitr::kable(car_tbl, format="latex", booktabs=TRUE, col.names = NULL, escape = FALSE))
+  cat("\n\n")
+
+  # ---- NOTE ----
+  cat("## Note\n\n")
+  cat(fmt(r$note), "\n\n")
+
+  # pagina nuova
+  if (i < nrow(cartellino_df)) cat("\\newpage\n\n")
+}
+```

@@ -15,20 +15,21 @@ norm_name <- function(x) {
 }
 
 # 1) Confini amministrativi ISTAT (Comuni/Regioni) – scarico zip e leggo
-# NB: l’URL ISTAT cambia talvolta: se dà 404 ti dico cosa fare sotto.
-istat_zip <- "istat_boundaries.zip"
-istat_url <- "https://www.istat.it/storage/cartografia/confini_amministrativi/non_generalizzati/2026/Limiti01012026.zip"
 
-if (!file.exists(istat_zip)) download.file(istat_url, istat_zip, mode = "wb")
+# istat_zip <- "istat_boundaries.zip"
+# istat_url <- "https://www.istat.it/storage/cartografia/confini_amministrativi/non_generalizzati/2026/Limiti01012026.zip"
+# if (!file.exists(istat_zip)) download.file(istat_url, istat_zip, mode = "wb")
 
-unzip_dir <- "istat_boundaries"
-dir.create(unzip_dir, showWarnings = FALSE)
-unzip(istat_zip, exdir = unzip_dir)
+unzip_dir <- "boundaries"
+# if (!dir.exists(unzip_dir)){
+#   dir.create(unzip_dir, showWarnings = FALSE)
+#   unzip(istat_zip, exdir = unzip_dir)
+# }
 
 # Cerca shapefile dei Comuni e delle Regioni (i nomi file possono variare leggermente)
 shps <- list.files(unzip_dir, pattern = "\\.shp$", recursive = TRUE, full.names = TRUE)
 
-# Prova a beccare "Comuni" e "Regioni"
+
 shp_comuni   <- shps[str_detect(tolower(shps), "com")][1]
 shp_regioni  <- shps[str_detect(tolower(shps), "reg")][1]
 
@@ -55,7 +56,7 @@ comuni_abruzzo <- comuni |>
 saveRDS(list(
         abruzzo = abr,
         comuni_abruzzo = comuni_abruzzo
-), "abruzzo_boundaries.rds")
+), "boundaries/abruzzo_boundaries.rds")
 
 
 

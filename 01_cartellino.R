@@ -5,6 +5,11 @@ library(maptiles)
 library(terra)
 library(tidyterra)
 library(sf)
+library(quarto)
+library(fs)
+library(magick)
+library(glue)
+
 source("source.R")
 
 tbls <- list.files("input", pattern = ".docx$", full.names = TRUE, recursive = TRUE)|> 
@@ -19,8 +24,6 @@ if(!file.exists("boundaries/abruzzo_boundaries.rds")){
 bnd <- readRDS("boundaries/abruzzo_boundaries.rds")
 abruzzo <- bnd$abruzzo
 comuni_ab <- bnd$comuni_abruzzo
-
-
 
 # prima tabella:
 tbls_z <- tbls |>
@@ -97,52 +100,54 @@ cartellino_df2 <- cartellino_df %>%
       if ("comune" %in% names(.)) comune else NA_character_,
       if ("provincia" %in% names(.)) provincia else NA_character_
     ),
-    map_plot = Map(make_map_abruzzo, lon_dec, lat_dec, comune_poly)
-  )
+    map_file = Map(make_map_abruzzo, lon_dec, lat_dec, comune_poly, n_scheda)
+  ) |> 
+  mutate(map_file = map_file[[1]])
 
-cartellino_df2 |> 
-  filter(is.null(map_plot)) |> 
-  pull(n_scheda)
-
-for(i in seq_len(nrow(cartellino_df2))){
-  
-  p <- cartellino_df2$map_plot[[i]]
-  
-  if(!is.null(p)){
-    
-    file <- sprintf("maps/map_%03d.png", i)
-    
-    ggsave(
-      file,
-      plot = p,
-      width = 18,
-      height = 9,
-      units = "cm",
-      dpi = 300
-    )
-    
-    cartellino_df2$map_file[i] <- file
-    
-  } else {
-    
-    cartellino_df2$map_file[i] <- NA
-    
-  }
-  
-}
 
 cartellino_df3 <- cartellino_df2 |> 
-  select(-map_plot) |> 
   filter(!is.na(map_file))
+
+### ADD FIGURES 
+
+root_dir <- "input"
+out_dir  <- "photo_panels"
+
+if (!dir.exists(out_dir)) dir_create(out_dir)
+
+img_pattern <- "\\.(jpg|jpeg|JPG|JPEG|png|PNG|tif|tiff|TIF|TIFF)$"
+
+# 1. cartelle principali (AQ, CH, PE, TE)
+top_folders <- dir_ls(root_dir, type = "directory", recurse = FALSE)
+
+# 2. cartelle dei singoli esemplari = sottocartelle delle provinciali
+folders <- map(top_folders, ~ dir_ls(.x, type = "directory", recurse = FALSE)) |>
+  unlist() |>
+  as_fs_path()
+
+photo_tbl <- tibble(
+  folder = folders,
+  codice = path_file(folders)
+) |>
+  mutate(
+    photo_files = map(folder, ~ dir_ls(.x, recurse = TRUE, type = "file", regexp = img_pattern)),
+    n_foto = map_int(photo_files, length)
+  ) |>
+  filter(n_foto > 0)
+
+all_photos <- photo_tbl$photo_files |> 
+  reduce(c) 
+
+
+cartellino_df4 <- cartellino_df3 |>
+  mutate(
+    photo_file = purrr::map_chr(n_scheda, make_photo_from_nscheda, all_photos = all_photos)
+  )
 
 cartellino_df2 |> 
   filter(is.na(map_file)) |> 
   pull(n_scheda)
 
+saveRDS(cartellino_df4, "output/cartellino_df_maps.rds")
 
-saveRDS(cartellino_df3, "output/cartellino_df_maps.rds")
-
-
-
-
-
+quarto::quarto_render("cartellini.qmd")

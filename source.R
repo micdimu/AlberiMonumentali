@@ -92,8 +92,14 @@ get_osm_tiles <- function(bbox, zoom = 13) {
 }
 
 
-make_map_abruzzo <- function(lon, lat, comune_poly = NULL) {
+make_map_abruzzo <- function(lon, lat, comune_poly = NULL, n_scheda = NULL) {
   if (is.na(lat) || is.na(lon)) return(NULL)
+  
+  nsch  <- gsub("/", "_", n_scheda) 
+ 
+  file <- sprintf("maps/map_%s.png", nsch)
+  
+  if(file.exists(file)) return(file)
   
   pt <- st_as_sf(data.frame(lon = lon, lat = lat), coords = c("lon","lat"), crs = 4326)
   
@@ -131,5 +137,17 @@ make_map_abruzzo <- function(lon, lat, comune_poly = NULL) {
       theme(plot.title = element_text(face = "bold", hjust = 0))
   }
   
-  p_ctx + p_zoom + plot_layout(ncol = 2, widths = c(1, 1.5))
+  plotmap <- p_ctx + p_zoom + plot_layout(ncol = 2, widths = c(1, 1.5))
+  
+  
+  ggsave(
+    file,
+    plot = plotmap,
+    width = 18,
+    height = 9,
+    units = "cm",
+    dpi = 300
+  )
+  
+  return(file)
 }

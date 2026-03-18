@@ -63,8 +63,74 @@ for (i in seq_len(nrow(cartellino_df))) {
   cat("\\begin{center}\n")
   cat("\\LARGE\\textbf{", fmt(r$nome), "}\n", sep = "")
   cat("\\end{center}\n\n")
+  
   cat("\\vspace{2mm}\n\n")
 
+  
+
+  # ---- TABELLA CARATTERISTICHE ----
+  car_tbl <- data.frame(
+    Campo = c("Specie", "Nome volgare", "Circonferenza (cm)", "Altezza (m)", "Criterio monumentalità"),
+    Valore = c(
+      fmt(if ("specie" %in% names(r)) paste0("\\textit{", r$specie, "}") else NA),
+      fmt(if ("nome_volgare" %in% names(r)) r$nome_volgare else NA),
+      fmt(if ("circonferenza_cm" %in% names(r)) r$circonferenza_cm else NA),
+      fmt(if ("altezza_cm" %in% names(r)) r$altezza_cm else NA),
+      fmt(if ("criterio_monumentalita" %in% names(r)) r$criterio_monumentalita else NA)
+    ),
+    stringsAsFactors = FALSE
+  )
+  
+  crit <- strsplit(car_tbl$Valore[car_tbl$Campo == "Criterio monumentalità"], ",\\s*")[[1]]
+
+new_rows <- data.frame(
+  Campo = c("Criterio di monumentalità", rep("", length(crit)-1)),
+  Valore = crit
+)
+
+car_tbl <- rbind(
+  car_tbl[car_tbl$Campo != "Criterio monumentalità", ],
+  new_rows,
+  stringsAsFactors = FALSE
+)
+  
+  car_tbl[,1] <- paste0("\\textbf{", car_tbl[,1], "}")
+  
+  cat("\\begin{minipage}{0.65\\textwidth}\n")
+  cat("\\textbf{Caratteristiche}\n\n\\vspace{0.3cm}\n\n")
+  
+  
+  print(knitr::kable(car_tbl, 
+                     format="latex", 
+                     booktabs=TRUE, 
+                     col.names = NULL, 
+                     escape = FALSE))
+  
+  
+  cat("\\end{minipage}\n")
+  
+  cat("\\hfill\n")
+  
+  cat("\\begin{minipage}{0.8\\textwidth}\n")
+  cat("\\fbox{%\n")
+  
+  pf <- cartellino_df$photo_file[i]
+  if (!is.na(pf) && file.exists(pf)) {
+    pf_abs <- normalizePath(pf, winslash = "/", mustWork = TRUE)
+    
+    cat("\\includegraphics[width=0.4\\linewidth]{", pf_abs, "}\n", sep = "")
+    } else {
+      cat("\\parbox{0.6\\linewidth}{\\centering Nessuna immagine disponibile}\n")
+    }
+  
+  cat("}\n")
+  cat("\\end{minipage}\n\n")
+  
+  cat("\\begin{center}\n")
+  cat("\\rule{0.6\\textwidth}{0.4pt}\n")
+  cat("\\end{center}\n")
+  cat("\\vspace{3mm}\n")
+  
   # ---- TABELLA LOCALIZZAZIONE ----
   loc_tbl <- data.frame(
     Campo = c("Regione", "Provincia", 
@@ -113,38 +179,7 @@ for (i in seq_len(nrow(cartellino_df))) {
   
   cat("\\end{minipage}\n\n")
                   
-
-  # ---- TABELLA CARATTERISTICHE ----
-  car_tbl <- data.frame(
-    Campo = c("Specie", "Nome volgare", "Circonferenza (cm)", "Altezza (m)", "Criterio monumentalità"),
-    Valore = c(
-      fmt(if ("specie" %in% names(r)) r$specie else NA),
-      fmt(if ("nome_volgare" %in% names(r)) r$nome_volgare else NA),
-      fmt(if ("circonferenza_cm" %in% names(r)) r$circonferenza_cm else NA),
-      fmt(if ("altezza_cm" %in% names(r)) r$altezza_cm else NA),
-      fmt(if ("criterio_monumentalita" %in% names(r)) r$criterio_monumentalita else NA)
-    ),
-    stringsAsFactors = FALSE
-  )
   
-  crit <- strsplit(car_tbl$Valore[car_tbl$Campo == "Criterio monumentalità"], ",\\s*")[[1]]
-
-new_rows <- data.frame(
-  Campo = c("Criterio di monumentalità", rep("", length(crit)-1)),
-  Valore = crit
-)
-
-car_tbl <- rbind(
-  car_tbl[car_tbl$Campo != "Criterio monumentalità", ],
-  new_rows,
-  stringsAsFactors = FALSE
-)
-  
-  car_tbl[,1] <- paste0("\\textbf{", car_tbl[,1], "}")
-  cat("**Caratteristiche**\n\n")
-  print(knitr::kable(car_tbl, format="latex", booktabs=TRUE, col.names = NULL, escape = FALSE))
-  cat("\n\n")
-
   # ---- NOTE ----
   cat("## Note\n\n")
   cat(fmt(r$note), "\n\n")
